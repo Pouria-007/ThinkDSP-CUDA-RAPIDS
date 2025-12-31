@@ -3,6 +3,21 @@ by Allen B. Downey, available from greenteapress.com
 
 Copyright 2013 Allen B. Downey
 License: MIT License (https://opensource.org/licenses/MIT)
+
+DISCLAIMER:
+THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+The GPU acceleration features have not been tested on all hardware configurations,
+operating systems, or use cases. The software may contain bugs, errors, or
+incompatibilities. Use at your own risk. The maintainers and contributors accept
+no responsibility or liability for any damages, data loss, or other issues that
+may arise from the use of this software.
 """
 
 import copy
