@@ -12,6 +12,9 @@ matplotlib = "^3.3.3"
 seaborn = "^0.11.0"
 pandas = "^1.1.4"
 scipy = "^1.5.4"
+# GPU acceleration (optional)
+# Install separately: pip install cupy-cuda11x cusignal
+# Or: poetry add --optional cupy cusignal
 
 [tool.poetry.dev-dependencies]
 

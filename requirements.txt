@@ -3,3 +3,8 @@ numpy
 matplotlib
 pandas
 scipy
+# GPU acceleration (optional)
+# Install cupy and cusignal for GPU support:
+# pip install cupy-cuda11x cusignal
+# (replace cuda11x with your CUDA version, e.g., cuda12x)
+# Or use conda: conda install -c conda-forge cupy cusignal

@@ -1,11 +1,17 @@
 name: ThinkDSP
 
 dependencies:
-  - python>=3.6
+  - python>=3.8
   - jupyter
   - numpy>=1.16
   - matplotlib
   - seaborn
   - pandas
   - scipy
+  # GPU acceleration (optional - install via conda-forge or pip)
+  # Uncomment the following lines if you have CUDA-capable GPU:
+  # - conda-forge::cupy
+  # - conda-forge::cusignal
+  # Or install via pip: pip install cupy-cuda11x cusignal
+  # (replace cuda11x with your CUDA version, e.g., cuda12x)
 

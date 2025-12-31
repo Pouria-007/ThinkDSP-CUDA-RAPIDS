@@ -20,6 +20,14 @@ from scipy.io import wavfile
 
 import matplotlib.pyplot as plt
 
+# GPU backend support
+try:
+    from thinkdsp_gpu.backend import get_backend
+    _backend = get_backend()
+except ImportError:
+    # Fallback if GPU backend not available
+    _backend = None
+
 try:
     from IPython.display import Audio
 except ImportError:
@@ -176,8 +184,13 @@ class _SpectrumParent:
         framerate: frames per second
         full: boolean to indicate full or real FFT
         """
-        self.hs = np.asanyarray(hs)
-        self.fs = np.asanyarray(fs)
+        if _backend is not None:
+            # Keep GPU arrays on GPU, convert CPU arrays to backend arrays
+            self.hs = _backend.asarray(hs)
+            self.fs = _backend.asarray(fs)
+        else:
+            self.hs = np.asanyarray(hs)
+            self.fs = np.asanyarray(fs)
         self.framerate = framerate
         self.full = full
 
@@ -189,12 +202,20 @@ class _SpectrumParent:
     @property
     def amps(self):
         """Returns a sequence of amplitudes (read-only property)."""
-        return np.absolute(self.hs)
+        if _backend is not None:
+            return _backend.to_cpu(np.absolute(self.hs))
+        else:
+            return np.absolute(self.hs)
 
     @property
     def power(self):
         """Returns a sequence of powers (read-only property)."""
-        return self.amps**2
+        if _backend is not None:
+            amps = np.absolute(self.hs)
+            power = amps**2
+            return _backend.to_cpu(power)
+        else:
+            return self.amps**2
 
     def copy(self):
         """Makes a copy.
@@ -213,8 +234,12 @@ class _SpectrumParent:
         assert self.framerate == other.framerate
         assert len(self) == len(other)
 
-        hs = self.hs - other.hs
-        return np.max(np.abs(hs))
+        if _backend is not None:
+            hs = self.hs - other.hs
+            return float(_backend.to_cpu(np.max(np.abs(hs))))
+        else:
+            hs = self.hs - other.hs
+            return np.max(np.abs(hs))
 
     def ratio(self, denom, thresh=1, val=0):
         """The ratio of two spectrums.
@@ -250,9 +275,15 @@ class _SpectrumParent:
 
         returns: fs, amps
         """
-        hs = np.fft.fftshift(self.hs)
-        amps = np.abs(hs)
-        fs = np.fft.fftshift(self.fs)
+        if _backend is not None:
+            hs = _backend.fftshift(self.hs)
+            amps = np.abs(_backend.to_cpu(hs))
+            fs = _backend.fftshift(self.fs)
+            fs = _backend.to_cpu(fs)
+        else:
+            hs = np.fft.fftshift(self.hs)
+            amps = np.abs(hs)
+            fs = np.fft.fftshift(self.fs)
         i = 0 if high is None else find_index(-high, fs)
         j = None if high is None else find_index(high, fs) + 1
         return fs[i:j], amps[i:j]
@@ -269,7 +300,9 @@ class _SpectrumParent:
             plt.plot(fs, amps, **options)
         else:
             i = None if high is None else find_index(high, self.fs)
-            plt.plot(self.fs[:i], self.amps[:i], **options)
+            fs_plot = self.fs[:i] if _backend is None else _backend.to_cpu(self.fs[:i])
+            amps_plot = self.amps[:i]
+            plt.plot(fs_plot, amps_plot, **options)
 
     def plot_power(self, high=None, **options):
         """Plots power vs frequency.
@@ -281,7 +314,9 @@ class _SpectrumParent:
             plt.plot(fs, amps**2, **options)
         else:
             i = None if high is None else find_index(high, self.fs)
-            plt.plot(self.fs[:i], self.power[:i], **options)
+            fs_plot = self.fs[:i] if _backend is None else _backend.to_cpu(self.fs[:i])
+            power_plot = self.power[:i]
+            plt.plot(fs_plot, power_plot, **options)
 
     def estimate_slope(self):
         """Runs linear regression on log power vs log frequency.
@@ -345,31 +380,52 @@ class Spectrum(_SpectrumParent):
         returns: Spectrum
         """
         assert all(self.fs == other.fs)
-        if self.full:
-            hs1 = np.fft.fftshift(self.hs)
-            hs2 = np.fft.fftshift(other.hs)
-            hs = np.convolve(hs1, hs2, mode="same")
-            hs = np.fft.ifftshift(hs)
+        if _backend is not None:
+            if self.full:
+                hs1 = _backend.fftshift(self.hs)
+                hs2 = _backend.fftshift(other.hs)
+                hs = _backend.convolve(hs1, hs2, mode="same")
+                hs = _backend.ifftshift(hs)
+            else:
+                # not sure this branch would mean very much
+                hs = _backend.convolve(self.hs, other.hs, mode="same")
+            # Ensure result is on CPU for compatibility
+            hs = _backend.to_cpu(hs)
         else:
-            # not sure this branch would mean very much
-            hs = np.convolve(self.hs, other.hs, mode="same")
+            if self.full:
+                hs1 = np.fft.fftshift(self.hs)
+                hs2 = np.fft.fftshift(other.hs)
+                hs = np.convolve(hs1, hs2, mode="same")
+                hs = np.fft.ifftshift(hs)
+            else:
+                # not sure this branch would mean very much
+                hs = np.convolve(self.hs, other.hs, mode="same")
 
         return Spectrum(hs, self.fs, self.framerate, self.full)
 
     @property
     def real(self):
         """Returns the real part of the hs (read-only property)."""
-        return np.real(self.hs)
+        if _backend is not None:
+            return _backend.to_cpu(np.real(self.hs))
+        else:
+            return np.real(self.hs)
 
     @property
     def imag(self):
         """Returns the imaginary part of the hs (read-only property)."""
-        return np.imag(self.hs)
+        if _backend is not None:
+            return _backend.to_cpu(np.imag(self.hs))
+        else:
+            return np.imag(self.hs)
 
     @property
     def angles(self):
         """Returns a sequence of angles (read-only property)."""
-        return np.angle(self.hs)
+        if _backend is not None:
+            return _backend.to_cpu(np.angle(self.hs))
+        else:
+            return np.angle(self.hs)
 
     def scale(self, factor):
         """Multiplies all elements by the given factor.
@@ -446,10 +502,18 @@ class Spectrum(_SpectrumParent):
 
         returns: Wave
         """
-        if self.full:
-            ys = np.fft.ifft(self.hs)
+        if _backend is not None:
+            if self.full:
+                ys = _backend.ifft(self.hs)
+            else:
+                ys = _backend.irfft(self.hs)
+            # Convert to CPU for Wave object
+            ys = _backend.to_cpu(ys)
         else:
-            ys = np.fft.irfft(self.hs)
+            if self.full:
+                ys = np.fft.ifft(self.hs)
+            else:
+                ys = np.fft.irfft(self.hs)
 
         # NOTE: whatever the start time was, we lose it when
         # we transform back; we could fix that by saving start
@@ -467,8 +531,12 @@ class IntegratedSpectrum:
         cs: sequence of cumulative amplitudes
         fs: sequence of frequencies
         """
-        self.cs = np.asanyarray(cs)
-        self.fs = np.asanyarray(fs)
+        if _backend is not None:
+            self.cs = _backend.asarray(cs)
+            self.fs = _backend.asarray(fs)
+        else:
+            self.cs = np.asanyarray(cs)
+            self.fs = np.asanyarray(fs)
 
     def plot_power(self, low=0, high=None, expo=False, **options):
         """Plots the integrated spectrum.
@@ -478,6 +546,10 @@ class IntegratedSpectrum:
         """
         cs = self.cs[low:high]
         fs = self.fs[low:high]
+        
+        if _backend is not None:
+            cs = _backend.to_cpu(cs)
+            fs = _backend.to_cpu(fs)
 
         if expo:
             cs = np.exp(cs)
@@ -506,7 +578,10 @@ class Dct(_SpectrumParent):
 
         Note: for DCTs, amps are positive or negative real.
         """
-        return self.hs
+        if _backend is not None:
+            return _backend.to_cpu(self.hs)
+        else:
+            return self.hs
 
     def __add__(self, other):
         """Adds two DCTs elementwise.
@@ -530,7 +605,11 @@ class Dct(_SpectrumParent):
         returns: Wave
         """
         N = len(self.hs)
-        ys = scipy.fftpack.idct(self.hs, type=2) / 2 / N
+        if _backend is not None:
+            ys = _backend.idct(self.hs, type=2) / 2 / N
+            ys = _backend.to_cpu(ys)
+        else:
+            ys = scipy.fftpack.idct(self.hs, type=2) / 2 / N
         # NOTE: whatever the start time was, we lose it when
         # we transform back
         # ts = self.start + np.arange(len(ys)) / self.framerate
@@ -634,7 +713,11 @@ class Spectrogram:
             wave = spectrum.make_wave()
             n = len(wave)
 
-            window = 1 / np.hamming(n)
+            if _backend is not None:
+                window = 1 / _backend.hamming(n)
+                window = _backend.to_cpu(window)
+            else:
+                window = 1 / np.hamming(n)
             wave.window(window)
 
             i = wave.find_index(t)
@@ -646,9 +729,16 @@ class Spectrogram:
         low = min(starts)
         high = max(ends)
 
-        ys = np.zeros(high - low, dtype=float)
-        for start, end, wave in res:
-            ys[start:end] = wave.ys
+        if _backend is not None:
+            ys = _backend.xp.zeros(high - low, dtype=float)
+            for start, end, wave in res:
+                wave_ys = _backend.asarray(wave.ys)
+                ys[start:end] = wave_ys
+            ys = _backend.to_cpu(ys)
+        else:
+            ys = np.zeros(high - low, dtype=float)
+            for start, end, wave in res:
+                ys[start:end] = wave.ys
 
         # ts = np.arange(len(ys)) / self.framerate
         return Wave(ys, framerate=wave.framerate)
@@ -798,7 +888,11 @@ class Wave:
         else:
             window = other
 
-        ys = np.convolve(self.ys, window, mode="full")
+        if _backend is not None:
+            ys = _backend.convolve(self.ys, window, mode="full")
+            ys = _backend.to_cpu(ys)
+        else:
+            ys = np.convolve(self.ys, window, mode="full")
         # ts = np.arange(len(ys)) / self.framerate
         return Wave(ys, framerate=self.framerate)
 
@@ -843,7 +937,12 @@ class Wave:
 
     def hamming(self):
         """Apply a Hamming window to the wave."""
-        self.ys *= np.hamming(len(self.ys))
+        if _backend is not None:
+            window = _backend.hamming(len(self.ys))
+            self.ys = _backend.asarray(self.ys) * window
+            self.ys = _backend.to_cpu(self.ys)
+        else:
+            self.ys *= np.hamming(len(self.ys))
 
     def window(self, window):
         """Apply a window to the wave.
@@ -944,20 +1043,38 @@ class Wave:
         n = len(self.ys)
         d = 1 / self.framerate
 
-        if full:
-            hs = np.fft.fft(self.ys)
-            fs = np.fft.fftfreq(n, d)
+        if _backend is not None:
+            ys_gpu = _backend.asarray(self.ys)
+            if full:
+                hs = _backend.fft(ys_gpu)
+                fs = _backend.fftfreq(n, d)
+            else:
+                hs = _backend.rfft(ys_gpu)
+                fs = _backend.rfftfreq(n, d)
+            # Keep on GPU for Spectrum operations, convert only when needed
+            # Spectrum will handle GPU arrays
         else:
-            hs = np.fft.rfft(self.ys)
-            fs = np.fft.rfftfreq(n, d)
+            if full:
+                hs = np.fft.fft(self.ys)
+                fs = np.fft.fftfreq(n, d)
+            else:
+                hs = np.fft.rfft(self.ys)
+                fs = np.fft.rfftfreq(n, d)
 
         return Spectrum(hs, fs, self.framerate, full)
 
     def make_dct(self):
         """Computes the DCT of this wave."""
         N = len(self.ys)
-        hs = scipy.fftpack.dct(self.ys, type=2)
-        fs = (0.5 + np.arange(N)) / 2
+        if _backend is not None:
+            ys_gpu = _backend.asarray(self.ys)
+            hs = _backend.dct(ys_gpu, type=2)
+            fs = _backend.xp.arange(N)
+            fs = (0.5 + fs) / 2
+            # Keep on GPU for DCT operations
+        else:
+            hs = scipy.fftpack.dct(self.ys, type=2)
+            fs = (0.5 + np.arange(N)) / 2
         return Dct(hs, fs, self.framerate)
 
     def make_spectrogram(self, seg_length, win_flag=True):
@@ -969,7 +1086,11 @@ class Wave:
         returns: Spectrogram
         """
         if win_flag:
-            window = np.hamming(seg_length)
+            if _backend is not None:
+                window = _backend.hamming(seg_length)
+                window = _backend.to_cpu(window)
+            else:
+                window = np.hamming(seg_length)
         i, j = 0, seg_length
         step = int(seg_length // 2)
 
